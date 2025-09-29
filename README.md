@@ -140,6 +140,10 @@ Comprehensive logging system that:
 | `PORT` | Port for web server (future use) | No | 3000 |
 | `MONGODB_URI` | MongoDB connection string | No | mongodb://localhost:27017/telegram_bot |
 | `MONGODB_DATABASE` | MongoDB database name | No | telegram_bot |
+| `USE_WEBHOOK` | Enable webhook mode | No | false |
+| `WEBHOOK_DOMAIN` | Domain for webhook (required if USE_WEBHOOK=true) | No | - |
+| `WEBHOOK_PATH` | Webhook endpoint path | No | /webhook |
+| `WEBHOOK_PORT` | Port for webhook server | No | 3000 |
 
 ## Production Deployment
 
@@ -170,9 +174,36 @@ Comprehensive logging system that:
    ```
 
 3. **Services Included**:
-   - Telegram Bot Application
+   - Telegram Bot Application (with webhook support)
    - MongoDB Database
    - Mongo Express (Web UI at http://localhost:8081)
+
+### Webhook Configuration
+
+For production deployments with webhooks:
+
+1. **Set up environment variables**:
+   ```bash
+   USE_WEBHOOK=true
+   WEBHOOK_DOMAIN=your-domain.com
+   WEBHOOK_PATH=/webhook
+   WEBHOOK_PORT=3000
+   ```
+
+2. **Set up webhook**:
+   ```bash
+   ./scripts/webhook-setup.sh
+   ```
+
+3. **Test webhook**:
+   ```bash
+   node scripts/test-webhook.js
+   ```
+
+**Requirements for webhooks**:
+- Valid SSL certificate (HTTPS)
+- Publicly accessible domain
+- Port 3000 (or configured port) open
 
 ### Development with Docker
 

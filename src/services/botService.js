@@ -1,4 +1,5 @@
 const { Telegraf, Scenes, session } = require('telegraf');
+const express = require('express');
 const config = require('../config');
 const Logger = require('../utils/logger');
 const memoryStorage = require('./memoryStorage');
@@ -8,6 +9,8 @@ const User = require('../models/User');
 class BotService {
   constructor() {
     this.bot = null;
+    this.app = null;
+    this.server = null;
     this.isRunning = false;
     this.registrationHandler = null;
     this.stage = null;
@@ -33,25 +36,18 @@ class BotService {
       // Set up commands
       this.setupCommands();
       
-      // Start the bot
-      if (config.env === 'production') {
-        // Use webhook in production
-        await this.bot.launch({
-          webhook: {
-            domain: process.env.WEBHOOK_DOMAIN,
-            port: config.port
-          }
-        });
+      // Start the bot based on configuration
+      if (config.webhook.enabled && config.webhook.domain) {
+        await this.startWebhook();
       } else {
-        // Use polling in development
-        await this.bot.launch();
+        await this.startPolling();
       }
       
       this.isRunning = true;
       Logger.info('Bot started successfully with Telegraf', { 
         username: config.bot.username,
         name: config.bot.name,
-        mode: config.env === 'production' ? 'webhook' : 'polling'
+        mode: config.webhook.enabled ? 'webhook' : 'polling'
       });
       
       return this.bot;
@@ -62,13 +58,87 @@ class BotService {
   }
 
   /**
+   * Start bot with webhook
+   */
+  async startWebhook() {
+    try {
+      // Create Express app
+      this.app = express();
+      
+      // Middleware
+      this.app.use(express.json());
+      
+      // Health check endpoint
+      this.app.get('/health', (req, res) => {
+        res.json({ 
+          status: 'healthy', 
+          timestamp: new Date().toISOString(),
+          bot: config.bot.name
+        });
+      });
+      
+      // Webhook endpoint
+      this.app.use(this.bot.webhookCallback(config.webhook.path));
+      
+      // Start server
+      this.server = this.app.listen(config.webhook.port, () => {
+        Logger.info('Express server started', { 
+          port: config.webhook.port,
+          webhookPath: config.webhook.path
+        });
+      });
+      
+      // Set webhook URL
+      const webhookUrl = `https://${config.webhook.domain}${config.webhook.path}`;
+      await this.bot.telegram.setWebhook(webhookUrl);
+      
+      Logger.info('Webhook configured', { 
+        url: webhookUrl,
+        domain: config.webhook.domain,
+        path: config.webhook.path
+      });
+      
+    } catch (error) {
+      Logger.error('Failed to start webhook', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Start bot with polling
+   */
+  async startPolling() {
+    try {
+      await this.bot.launch();
+      Logger.info('Bot started with polling');
+    } catch (error) {
+      Logger.error('Failed to start polling', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
    * Stop the bot
    */
   async stop() {
-    if (this.bot && this.isRunning) {
-      await this.bot.stop();
-      this.isRunning = false;
-      Logger.info('Bot stopped');
+    try {
+      if (this.bot && this.isRunning) {
+        if (config.webhook.enabled) {
+          // Stop webhook
+          await this.bot.telegram.deleteWebhook();
+          if (this.server) {
+            this.server.close();
+          }
+          Logger.info('Webhook stopped');
+        } else {
+          // Stop polling
+          await this.bot.stop();
+          Logger.info('Polling stopped');
+        }
+        this.isRunning = false;
+      }
+    } catch (error) {
+      Logger.error('Error stopping bot', { error: error.message });
     }
   }
 
