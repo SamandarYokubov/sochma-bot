@@ -1,72 +1,41 @@
-import dotenv from 'dotenv';
-import Joi from 'joi';
+require('dotenv').config();
 
-// Load environment variables
-dotenv.config();
-
-// Environment validation schema
-const envSchema = Joi.object({
-  BOT_TOKEN: Joi.string().required(),
-  BOT_USERNAME: Joi.string().required(),
-  MONGODB_URI: Joi.string().required(),
-  NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
-  PORT: Joi.number().default(3000),
-  LOG_LEVEL: Joi.string().valid('error', 'warn', 'info', 'debug').default('info'),
-  SOCHMA_API_URL: Joi.string().uri().required(),
-  SOCHMA_API_KEY: Joi.string().required(),
-  JWT_SECRET: Joi.string().required(),
-  ENCRYPTION_KEY: Joi.string().required(),
-  RATE_LIMIT_WINDOW_MS: Joi.number().default(900000), // 15 minutes
-  RATE_LIMIT_MAX_REQUESTS: Joi.number().default(20),
-  WEBHOOK_URL: Joi.string().uri().optional(),
-  WEBHOOK_PORT: Joi.number().default(8443),
-  WEBHOOK_CERT_PATH: Joi.string().optional(),
-  WEBHOOK_KEY_PATH: Joi.string().optional()
-}).unknown();
-
-// Validate environment variables
-const { error, value: envVars } = envSchema.validate(process.env);
-
-if (error) {
-  throw new Error(`Config validation error: ${error.message}`);
-}
-
-// Export configuration
-export const config = {
+const config = {
+  // Bot Configuration
   bot: {
-    token: envVars.BOT_TOKEN,
-    username: envVars.BOT_USERNAME,
+    token: process.env.TELEGRAM_BOT_TOKEN,
+    name: process.env.BOT_NAME || 'HelloWorldBot',
+    username: process.env.BOT_USERNAME || 'helloworld_bot'
   },
-  database: {
-    uri: envVars.MONGODB_URI,
+  
+  // Environment
+  env: process.env.NODE_ENV || 'development',
+  port: process.env.PORT || 3000,
+  
+  // MongoDB Configuration
+  mongodb: {
+    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/telegram_bot',
+    database: process.env.MONGODB_DATABASE || 'telegram_bot',
     options: {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
+      // Modern MongoDB driver options
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     }
   },
-  app: {
-    env: envVars.NODE_ENV,
-    port: envVars.PORT,
-    logLevel: envVars.LOG_LEVEL,
-  },
-  sochma: {
-    apiUrl: envVars.SOCHMA_API_URL,
-    apiKey: envVars.SOCHMA_API_KEY,
-  },
-  security: {
-    jwtSecret: envVars.JWT_SECRET,
-    encryptionKey: envVars.ENCRYPTION_KEY,
-  },
-  rateLimit: {
-    windowMs: envVars.RATE_LIMIT_WINDOW_MS,
-    maxRequests: envVars.RATE_LIMIT_MAX_REQUESTS,
-  },
-  webhook: {
-    url: envVars.WEBHOOK_URL,
-    port: envVars.WEBHOOK_PORT,
-    certPath: envVars.WEBHOOK_CERT_PATH,
-    keyPath: envVars.WEBHOOK_KEY_PATH,
+  
+  // Memory Storage Settings
+  storage: {
+    maxUsers: 1000, // Maximum number of users to store in memory
+    cleanupInterval: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+    useMongoDB: true, // Enable MongoDB storage
+    syncInterval: 5 * 60 * 1000, // Sync with MongoDB every 5 minutes
   }
 };
 
-export default config;
+// Validation
+if (!config.bot.token) {
+  throw new Error('TELEGRAM_BOT_TOKEN is required. Please set it in your .env file.');
+}
+
+module.exports = config;

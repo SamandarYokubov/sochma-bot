@@ -1,320 +1,240 @@
-# Sochma Bot 🤖
+# Telegram Hello World Bot
 
-A professional Telegram bot for the Sochma platform, designed to connect investors and buyers in a seamless, user-friendly environment.
+A simple and well-structured Telegram bot built with Node.js that demonstrates best practices for bot development, including memory storage for user information.
 
-## 🚀 Features
+## Features
 
-- **User Management**: Complete user registration, profile management, and authentication
-- **Smart Search**: Advanced search functionality for finding investors and buyers
-- **Profile System**: Comprehensive user profiles with company, industry, and contact information
-- **Real-time Communication**: Direct messaging and connection requests
-- **Analytics**: User activity tracking and platform statistics
-- **Multi-language Support**: Internationalization ready
-- **Rate Limiting**: Built-in protection against spam and abuse
-- **Error Handling**: Comprehensive error handling and logging
-- **Database Integration**: MongoDB integration with Mongoose ODM
-- **API Integration**: Seamless integration with Sochma platform API
+- 🤖 Simple Hello World functionality
+- 💾 Hybrid storage (Memory + MongoDB)
+- 🗄️ MongoDB integration with Mongoose ODM
+- 📊 User statistics and bot analytics
+- 🎯 Interactive buttons and commands
+- 📝 Comprehensive logging
+- 🏗️ Clean, modular architecture
+- 🔧 Environment-based configuration
+- 🛡️ Error handling and graceful shutdown
+- 🐳 Docker containerization with Compose
+- 🔄 Automatic data synchronization
 
-## 🏗️ Architecture
-
-The bot follows a modular, scalable architecture with clear separation of concerns:
+## Project Structure
 
 ```
 src/
-├── config/           # Configuration management
-├── controllers/      # Main bot controller
-├── handlers/         # Command and callback handlers
-├── middleware/       # Custom middleware
-├── models/          # Database models
+├── config/           # Configuration files
+│   └── index.js     # Main configuration
+├── controllers/      # Request controllers (for future web endpoints)
+├── handlers/         # Message handlers (for future expansion)
+├── middleware/       # Middleware functions
+├── models/          # Data models
 ├── services/        # Business logic services
+│   ├── botService.js      # Main bot service
+│   └── memoryStorage.js   # User memory storage
 ├── utils/           # Utility functions
+│   └── logger.js    # Logging utility
 └── index.js         # Application entry point
 ```
 
-## 🛠️ Tech Stack
+## Quick Start
 
-- **Runtime**: Node.js 18+
-- **Framework**: Telegraf.js 4.x
-- **Database**: MongoDB with Mongoose
-- **Logging**: Winston
-- **Validation**: Joi
-- **Environment**: dotenv
-- **HTTP Client**: Axios
-- **Scheduling**: node-cron
+### Prerequisites
 
-## 📋 Prerequisites
+- Node.js (v16 or higher)
+- A Telegram Bot Token (get one from [@BotFather](https://t.me/botfather))
+- MongoDB (v4.4 or higher) - Optional, can use Docker
+- Docker & Docker Compose - Optional, for containerized deployment
 
-- Node.js 18.0.0 or higher
-- MongoDB 4.4 or higher
-- Telegram Bot Token (from [@BotFather](https://t.me/botfather))
-- Sochma Platform API access
+### Installation
 
-## 🚀 Quick Start
+1. **Clone or download this project**
+   ```bash
+   git clone <your-repo-url>
+   cd telegram-hello-bot
+   ```
 
-### 1. Clone the Repository
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-```bash
-git clone https://github.com/your-org/sochma-bot.git
-cd sochma-bot
-```
+3. **Set up environment variables**
+   ```bash
+   cp env.example .env
+   ```
+   
+   Edit `.env` file and add your bot token:
+   ```
+   TELEGRAM_BOT_TOKEN=your_bot_token_here
+   BOT_NAME=HelloWorldBot
+   BOT_USERNAME=your_bot_username
+   MONGODB_URI=mongodb://localhost:27017/telegram_bot
+   MONGODB_DATABASE=telegram_bot
+   ```
 
-### 2. Install Dependencies
+4. **Start the bot**
+   ```bash
+   npm start
+   ```
 
-```bash
-npm install
-```
+   For development with auto-restart:
+   ```bash
+   npm run dev
+   ```
 
-### 3. Environment Setup
+## Bot Commands
 
-Copy the example environment file and configure your settings:
+- `/start` - Start the bot and see welcome message
+- `/hello` - Get a friendly greeting
+- `/help` - Show help message with all commands
+- `/stats` - Show bot statistics
+- `/info` - Show your stored information
 
-```bash
-cp env.example .env
-```
+## Features Explained
 
-Edit `.env` with your configuration:
+### Hybrid Storage System
+The bot uses a hybrid storage system that combines:
+- **Memory Storage**: Fast access for active users
+- **MongoDB**: Persistent storage with data validation
+- **Automatic Sync**: Data synchronized between memory and database
+- **User Management**: Stores user information (name, username, language, etc.)
+- **Chat Tracking**: Tracks chat information and activity
+- **Statistics**: Comprehensive analytics and performance metrics
+- **Cleanup**: Automatically cleans up inactive users (after 7 days)
 
-```env
-# Bot Configuration
-BOT_TOKEN=your_telegram_bot_token_here
-BOT_USERNAME=your_bot_username
+### Architecture Benefits
+- **Modular Design**: Each component has a single responsibility
+- **Scalable**: Easy to add new features and handlers
+- **Maintainable**: Clear separation of concerns
+- **Testable**: Services can be easily unit tested
+- **Configurable**: Environment-based configuration
 
-# Database Configuration
-MONGODB_URI=mongodb://localhost:27017/sochma_bot
+### Logging
+Comprehensive logging system that:
+- Logs all bot interactions
+- Provides different log levels (info, error, warn, debug)
+- Includes structured data for easy parsing
+- Adapts to development vs production environments
 
-# Application Configuration
-NODE_ENV=development
-LOG_LEVEL=info
+## Development
 
-# Sochma Platform API
-SOCHMA_API_URL=https://api.sochma.com
-SOCHMA_API_KEY=your_api_key_here
+### Adding New Commands
 
-# Security
-JWT_SECRET=your_jwt_secret_here
-ENCRYPTION_KEY=your_encryption_key_here
-```
+1. Add command handling in `src/services/botService.js`
+2. Update help message with new command
+3. Test the functionality
 
-### 4. Start the Bot
+### Adding New Features
 
-For development:
-```bash
-npm run dev
-```
-
-For production:
-```bash
-npm start
-```
-
-## 📚 Available Commands
-
-### User Commands
-
-- `/start` - Initialize the bot and set up your profile
-- `/profile` - View and edit your profile
-- `/search` - Search for investors and buyers
-- `/help` - Get help and documentation
-- `/settings` - Manage bot settings
-- `/stats` - View your account statistics
-- `/contact` - Contact support
-
-### Bot Features
-
-- **Profile Management**: Complete profile setup with company, industry, location, and bio
-- **User Types**: Support for investors, buyers, or both
-- **Advanced Search**: Search by user type, industry, location, and investment range
-- **Connection System**: Request connections and manage your network
-- **Notifications**: Real-time notifications for important events
-- **Analytics**: Track your activity and engagement
-
-## 🔧 Configuration
+1. Create new services in `src/services/`
+2. Add handlers in `src/handlers/` if needed
+3. Update configuration in `src/config/`
+4. Add appropriate logging
 
 ### Environment Variables
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `BOT_TOKEN` | Telegram bot token | Yes | - |
-| `BOT_USERNAME` | Bot username | Yes | - |
-| `MONGODB_URI` | MongoDB connection string | Yes | - |
+| `TELEGRAM_BOT_TOKEN` | Your bot token from BotFather | Yes | - |
+| `BOT_NAME` | Display name for your bot | No | HelloWorldBot |
+| `BOT_USERNAME` | Bot username | No | helloworld_bot |
 | `NODE_ENV` | Environment (development/production) | No | development |
-| `LOG_LEVEL` | Logging level | No | info |
-| `SOCHMA_API_URL` | Sochma platform API URL | Yes | - |
-| `SOCHMA_API_KEY` | Sochma platform API key | Yes | - |
-| `JWT_SECRET` | JWT signing secret | Yes | - |
-| `ENCRYPTION_KEY` | Data encryption key | Yes | - |
+| `PORT` | Port for web server (future use) | No | 3000 |
+| `MONGODB_URI` | MongoDB connection string | No | mongodb://localhost:27017/telegram_bot |
+| `MONGODB_DATABASE` | MongoDB database name | No | telegram_bot |
 
-### Database Models
+## Production Deployment
 
-#### User Model
-- Basic user information (name, username, Telegram ID)
-- Profile data (company, industry, location, bio)
-- User preferences and settings
-- Subscription and verification status
-- Activity tracking
+### Using Docker Compose (Recommended)
 
-#### Conversation Model
-- Conversation state management
-- User interaction tracking
-- Command and callback handling
-- Context preservation
+1. **Quick Setup**:
+   ```bash
+   # Copy environment template
+   cp env.docker .env
+   
+   # Edit .env with your bot token
+   nano .env
+   
+   # Run setup script
+   ./scripts/docker-setup.sh
+   ```
 
-## 🚀 Deployment
+2. **Manual Setup**:
+   ```bash
+   # Build and start all services
+   docker-compose up -d
+   
+   # View logs
+   docker-compose logs -f
+   
+   # Stop services
+   docker-compose down
+   ```
 
-### Development
+3. **Services Included**:
+   - Telegram Bot Application
+   - MongoDB Database
+   - Mongo Express (Web UI at http://localhost:8081)
+
+### Development with Docker
+
+For development, you can run only MongoDB in Docker:
 
 ```bash
+# Start MongoDB for development
+./scripts/docker-dev.sh
+
+# Run bot locally
 npm run dev
 ```
 
-### Production
+### Using PM2
 
-1. **Using PM2** (Recommended):
-```bash
-npm install -g pm2
-pm2 start src/index.js --name sochma-bot
-pm2 startup
-pm2 save
-```
+1. Install PM2 globally:
+   ```bash
+   npm install -g pm2
+   ```
 
-2. **Using Docker**:
-```bash
-docker build -t sochma-bot .
-docker run -d --name sochma-bot --env-file .env sochma-bot
-```
+2. Create ecosystem file:
+   ```bash
+   pm2 init
+   ```
 
-3. **Using systemd**:
-```bash
-sudo systemctl enable sochma-bot
-sudo systemctl start sochma-bot
-```
+3. Start with PM2:
+   ```bash
+   pm2 start src/index.js --name telegram-bot
+   ```
 
-### Webhook Setup (Production)
-
-For production deployments, configure webhooks:
-
-```env
-WEBHOOK_URL=https://yourdomain.com/webhook
-WEBHOOK_PORT=8443
-WEBHOOK_CERT_PATH=/path/to/cert.pem
-WEBHOOK_KEY_PATH=/path/to/private.key
-```
-
-## 🧪 Testing
-
-Run the test suite:
+### Using Docker (Standalone)
 
 ```bash
-npm test
+# Build image
+docker build -t telegram-bot .
+
+# Run container
+docker run -d \
+  --name telegram-bot \
+  --env-file .env \
+  telegram-bot
 ```
 
-Run tests with coverage:
-
-```bash
-npm run test:coverage
-```
-
-## 📊 Monitoring
-
-### Logs
-
-Logs are stored in the `logs/` directory:
-- `combined.log` - All logs
-- `error.log` - Error logs only
-
-### Health Checks
-
-The bot provides health check endpoints:
-- Database connection status
-- Sochma API connectivity
-- Bot status and statistics
-
-## 🔒 Security
-
-- **Rate Limiting**: Built-in rate limiting to prevent abuse
-- **Input Validation**: Comprehensive input validation and sanitization
-- **Error Handling**: Secure error handling without information leakage
-- **Data Encryption**: Sensitive data encryption support
-- **Access Control**: User permission and role-based access
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-### Development Guidelines
+## License
 
-- Follow ESLint configuration
-- Write comprehensive tests
-- Update documentation
-- Follow conventional commit messages
-- Ensure all tests pass
+MIT License - feel free to use this project as a starting point for your own Telegram bots!
 
-## 📝 API Documentation
+## Support
 
-### Sochma Platform Integration
-
-The bot integrates with the Sochma platform API for:
-- User profile synchronization
-- Search functionality
-- Connection management
-- Analytics and reporting
-
-### Webhook Endpoints
-
-- `POST /webhook` - Telegram webhook endpoint
-- `GET /health` - Health check endpoint
-- `GET /stats` - Bot statistics endpoint
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Bot not responding**:
-   - Check bot token validity
-   - Verify webhook configuration
-   - Check logs for errors
-
-2. **Database connection issues**:
-   - Verify MongoDB URI
-   - Check network connectivity
-   - Ensure MongoDB is running
-
-3. **API integration problems**:
-   - Verify API credentials
-   - Check API endpoint availability
-   - Review rate limiting
-
-### Debug Mode
-
-Enable debug logging:
-
-```env
-LOG_LEVEL=debug
-NODE_ENV=development
-```
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: [Wiki](https://github.com/your-org/sochma-bot/wiki)
-- **Issues**: [GitHub Issues](https://github.com/your-org/sochma-bot/issues)
-- **Email**: support@sochma.com
-- **Telegram**: [@sochma_support](https://t.me/sochma_support)
-
-## 🙏 Acknowledgments
-
-- [Telegraf.js](https://telegraf.js.org/) - Telegram Bot Framework
-- [MongoDB](https://www.mongodb.com/) - Database
-- [Winston](https://github.com/winstonjs/winston) - Logging
-- [Joi](https://joi.dev/) - Validation
+If you have questions or need help:
+1. Check the code comments
+2. Review the logging output
+3. Open an issue in the repository
 
 ---
 
-**Made with ❤️ by the Sochma Team**
+**Happy Bot Building! 🤖✨**

@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
-import { config } from '../config/index.js';
-import logger from '../utils/logger.js';
+const mongoose = require('mongoose');
+const config = require('../config');
+const Logger = require('../utils/logger');
 
 class DatabaseService {
   constructor() {
@@ -8,70 +8,92 @@ class DatabaseService {
     this.connection = null;
   }
 
+  /**
+   * Connect to MongoDB
+   */
   async connect() {
     try {
       if (this.isConnected) {
-        logger.info('Database already connected');
+        Logger.info('Database already connected');
         return;
       }
 
-      logger.info('Connecting to MongoDB...');
-      
-      this.connection = await mongoose.connect(config.database.uri, config.database.options);
+      Logger.info('Connecting to MongoDB', { uri: config.mongodb.uri });
+
+      this.connection = await mongoose.connect(config.mongodb.uri, {
+        ...config.mongodb.options,
+        dbName: config.mongodb.database
+      });
+
       this.isConnected = true;
       
-      logger.info('Successfully connected to MongoDB');
-      
-      // Handle connection events
-      mongoose.connection.on('error', (error) => {
-        logger.error('MongoDB connection error:', error);
-        this.isConnected = false;
-      });
+      // Set up connection event listeners
+      this.setupEventListeners();
 
-      mongoose.connection.on('disconnected', () => {
-        logger.warn('MongoDB disconnected');
-        this.isConnected = false;
+      Logger.info('Successfully connected to MongoDB', {
+        database: config.mongodb.database,
+        host: this.connection.connection.host,
+        port: this.connection.connection.port
       });
-
-      mongoose.connection.on('reconnected', () => {
-        logger.info('MongoDB reconnected');
-        this.isConnected = true;
-      });
-
-      // Graceful shutdown
-      process.on('SIGINT', this.gracefulShutdown.bind(this));
-      process.on('SIGTERM', this.gracefulShutdown.bind(this));
 
     } catch (error) {
-      logger.error('Failed to connect to MongoDB:', error);
+      Logger.error('Failed to connect to MongoDB', { 
+        error: error.message,
+        uri: config.mongodb.uri 
+      });
       throw error;
     }
   }
 
+  /**
+   * Disconnect from MongoDB
+   */
   async disconnect() {
     try {
-      if (this.connection) {
-        await mongoose.disconnect();
-        this.isConnected = false;
-        logger.info('Disconnected from MongoDB');
+      if (!this.isConnected) {
+        Logger.info('Database not connected');
+        return;
       }
+
+      await mongoose.disconnect();
+      this.isConnected = false;
+      
+      Logger.info('Disconnected from MongoDB');
     } catch (error) {
-      logger.error('Error disconnecting from MongoDB:', error);
+      Logger.error('Error disconnecting from MongoDB', { error: error.message });
       throw error;
     }
   }
 
-  async gracefulShutdown() {
-    logger.info('Received shutdown signal, closing MongoDB connection...');
-    try {
-      await this.disconnect();
-      process.exit(0);
-    } catch (error) {
-      logger.error('Error during graceful shutdown:', error);
-      process.exit(1);
-    }
+  /**
+   * Set up connection event listeners
+   */
+  setupEventListeners() {
+    const db = mongoose.connection;
+
+    db.on('error', (error) => {
+      Logger.error('MongoDB connection error', { error: error.message });
+    });
+
+    db.on('disconnected', () => {
+      Logger.warn('MongoDB disconnected');
+      this.isConnected = false;
+    });
+
+    db.on('reconnected', () => {
+      Logger.info('MongoDB reconnected');
+      this.isConnected = true;
+    });
+
+    db.on('close', () => {
+      Logger.warn('MongoDB connection closed');
+      this.isConnected = false;
+    });
   }
 
+  /**
+   * Get connection status
+   */
   getConnectionStatus() {
     return {
       isConnected: this.isConnected,
@@ -82,70 +104,78 @@ class DatabaseService {
     };
   }
 
+  /**
+   * Get database statistics
+   */
+  async getStats() {
+    try {
+      if (!this.isConnected) {
+        throw new Error('Database not connected');
+      }
+
+      const db = mongoose.connection.db;
+      const stats = await db.stats();
+      
+      return {
+        database: db.databaseName,
+        collections: stats.collections,
+        dataSize: stats.dataSize,
+        storageSize: stats.storageSize,
+        indexes: stats.indexes,
+        objects: stats.objects,
+        avgObjSize: stats.avgObjSize
+      };
+    } catch (error) {
+      Logger.error('Error getting database stats', { error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Create indexes for better performance
+   */
+  async createIndexes() {
+    try {
+      if (!this.isConnected) {
+        Logger.warn('Database not connected, skipping index creation');
+        return;
+      }
+
+      // Import models to ensure they're registered
+      // Mongoose will automatically create indexes when models are first used
+      require('../models/User');
+      require('../models/Chat');
+
+      Logger.info('Models registered, indexes will be created automatically');
+    } catch (error) {
+      Logger.error('Error creating database indexes', { error: error.message });
+      // Don't throw error, just log it as indexes will be created automatically
+    }
+  }
+
+  /**
+   * Health check
+   */
   async healthCheck() {
     try {
       if (!this.isConnected) {
         return { status: 'disconnected', message: 'Database not connected' };
       }
 
-      // Ping the database
+      // Simple ping to check connection
       await mongoose.connection.db.admin().ping();
       
-      return {
-        status: 'healthy',
+      return { 
+        status: 'healthy', 
         message: 'Database connection is healthy',
         ...this.getConnectionStatus()
       };
     } catch (error) {
-      logger.error('Database health check failed:', error);
-      return {
-        status: 'unhealthy',
+      return { 
+        status: 'unhealthy', 
         message: error.message,
         ...this.getConnectionStatus()
       };
-    }
-  }
-
-  // Utility methods for common operations
-  async createIndexes() {
-    try {
-      logger.info('Creating database indexes...');
-      
-      // Import models to ensure indexes are created
-      const User = (await import('../models/User.js')).default;
-      const Conversation = (await import('../models/Conversation.js')).default;
-      
-      // Create indexes for User model
-      await User.createIndexes();
-      
-      // Create indexes for Conversation model
-      await Conversation.createIndexes();
-      
-      logger.info('Database indexes created successfully');
-    } catch (error) {
-      logger.error('Error creating database indexes:', error);
-      throw error;
-    }
-  }
-
-  async clearTestData() {
-    if (config.app.env !== 'test') {
-      throw new Error('clearTestData can only be called in test environment');
-    }
-
-    try {
-      logger.info('Clearing test data...');
-      
-      const User = (await import('../models/User.js')).default;
-      const Conversation = (await import('../models/Conversation.js')).default;
-      
-      await User.deleteMany({});
-      await Conversation.deleteMany({});
-      
-      logger.info('Test data cleared successfully');
-    } catch (error) {
-      logger.error('Error clearing test data:', error);
-      throw error;
     }
   }
 }
@@ -153,4 +183,4 @@ class DatabaseService {
 // Create singleton instance
 const databaseService = new DatabaseService();
 
-export default databaseService;
+module.exports = databaseService;

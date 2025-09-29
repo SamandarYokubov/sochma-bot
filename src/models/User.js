@@ -1,25 +1,23 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
+  // Telegram user information
   telegramId: {
     type: Number,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   username: {
     type: String,
-    trim: true,
-    index: true
+    default: null
   },
   firstName: {
     type: String,
-    required: true,
-    trim: true
+    default: null
   },
   lastName: {
     type: String,
-    trim: true
+    default: null
   },
   languageCode: {
     type: String,
@@ -29,113 +27,139 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  isPremium: {
+  
+  // Chat information
+  chatId: {
+    type: Number,
+    default: null
+  },
+  chatType: {
+    type: String,
+    enum: ['private', 'group', 'supergroup', 'channel'],
+    default: 'private'
+  },
+  
+  // User statistics
+  messageCount: {
+    type: Number,
+    default: 0
+  },
+  lastSeen: {
+    type: Date,
+    default: Date.now
+  },
+  firstSeen: {
+    type: Date,
+    default: Date.now
+  },
+  
+  // Registration information
+  phoneNumber: {
+    type: String,
+    default: null,
+    index: true
+  },
+  userFullName: {
+    type: String,
+    default: null
+  },
+  role: {
+    type: String,
+    enum: ['buyer', 'investor', 'both'],
+    default: null
+  },
+  registrationState: {
+    type: String,
+    enum: ['not_started', 'phone_entered', 'name_entered', 'role_selected', 'agenda_viewed', 'completed'],
+    default: 'not_started'
+  },
+  isRegistered: {
     type: Boolean,
     default: false
   },
-  userType: {
-    type: String,
-    enum: ['investor', 'buyer', 'both', 'none'],
-    default: 'none'
+  
+  // User preferences
+  isActive: {
+    type: Boolean,
+    default: true
   },
-  profile: {
-    company: String,
-    industry: String,
-    experience: String,
-    investmentRange: String,
-    location: String,
-    bio: String,
-    website: String,
-    linkedin: String
+  blocked: {
+    type: Boolean,
+    default: false
   },
-  preferences: {
-    notifications: {
-      type: Boolean,
-      default: true
-    },
-    language: {
-      type: String,
-      default: 'en'
-    },
-    timezone: {
-      type: String,
-      default: 'UTC'
-    }
-  },
-  status: {
-    type: String,
-    enum: ['active', 'inactive', 'banned', 'pending_verification'],
-    default: 'active'
-  },
-  lastActivity: {
-    type: Date,
-    default: Date.now
-  },
-  joinedAt: {
-    type: Date,
-    default: Date.now
-  },
-  verificationStatus: {
-    isVerified: {
-      type: Boolean,
-      default: false
-    },
-    verifiedAt: Date,
-    verificationMethod: String
-  },
-  subscription: {
-    plan: {
-      type: String,
-      enum: ['free', 'basic', 'premium', 'enterprise'],
-      default: 'free'
-    },
-    expiresAt: Date,
-    features: [String]
+  
+  // Additional metadata
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
   }
 }, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true, // Adds createdAt and updatedAt
+  collection: 'users'
 });
 
-// Indexes for better performance
-userSchema.index({ telegramId: 1 });
+// Indexes for better performance (telegramId already has unique index)
 userSchema.index({ username: 1 });
-userSchema.index({ userType: 1 });
-userSchema.index({ status: 1 });
-userSchema.index({ lastActivity: -1 });
+userSchema.index({ chatId: 1 });
+userSchema.index({ lastSeen: -1 });
+userSchema.index({ createdAt: -1 });
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName || ''}`.trim();
-});
-
-// Virtual for account age
-userSchema.virtual('accountAge').get(function() {
-  return Math.floor((Date.now() - this.joinedAt) / (1000 * 60 * 60 * 24));
+  if (this.firstName && this.lastName) {
+    return `${this.firstName} ${this.lastName}`;
+  }
+  return this.firstName || this.username || 'Unknown';
 });
 
 // Instance methods
-userSchema.methods.updateLastActivity = function() {
-  this.lastActivity = new Date();
+userSchema.methods.updateLastSeen = function() {
+  this.lastSeen = new Date();
   return this.save();
 };
 
-userSchema.methods.isActive = function() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  return this.lastActivity > thirtyDaysAgo && this.status === 'active';
+userSchema.methods.incrementMessageCount = function() {
+  this.messageCount += 1;
+  this.lastSeen = new Date();
+  return this.save();
 };
 
-userSchema.methods.canAccessFeature = function(feature) {
-  const featureAccess = {
-    free: ['basic_search', 'profile_view'],
-    basic: ['basic_search', 'profile_view', 'contact_info', 'advanced_search'],
-    premium: ['basic_search', 'profile_view', 'contact_info', 'advanced_search', 'priority_support', 'analytics'],
-    enterprise: ['all']
-  };
-  
-  return featureAccess[this.subscription.plan]?.includes(feature) || 
-         featureAccess[this.subscription.plan]?.includes('all');
+userSchema.methods.updateRegistrationState = function(state) {
+  this.registrationState = state;
+  if (state === 'completed') {
+    this.isRegistered = true;
+  }
+  return this.save();
+};
+
+userSchema.methods.setPhoneNumber = function(phoneNumber) {
+  this.phoneNumber = phoneNumber;
+  this.registrationState = 'phone_entered';
+  return this.save();
+};
+
+userSchema.methods.setFullName = function(fullName) {
+  this.userFullName = fullName;
+  this.registrationState = 'name_entered';
+  return this.save();
+};
+
+userSchema.methods.setRole = function(role) {
+  this.role = role;
+  this.registrationState = 'role_selected';
+  return this.save();
+};
+
+userSchema.methods.completeRegistration = function() {
+  this.registrationState = 'completed';
+  this.isRegistered = true;
+  return this.save();
+};
+
+userSchema.methods.toSafeObject = function() {
+  const obj = this.toObject();
+  delete obj.__v;
+  return obj;
 };
 
 // Static methods
@@ -143,22 +167,39 @@ userSchema.statics.findByTelegramId = function(telegramId) {
   return this.findOne({ telegramId });
 };
 
-userSchema.statics.findActiveUsers = function() {
-  return this.find({ status: 'active' });
+userSchema.statics.findByUsername = function(username) {
+  return this.findOne({ username });
 };
 
-userSchema.statics.findByUserType = function(userType) {
-  return this.find({ userType, status: 'active' });
+userSchema.statics.findActiveUsers = function() {
+  return this.find({ isActive: true, blocked: false });
+};
+
+userSchema.statics.getUserStats = function() {
+  return this.aggregate([
+    {
+      $group: {
+        _id: null,
+        totalUsers: { $sum: 1 },
+        activeUsers: {
+          $sum: {
+            $cond: [{ $and: [{ $eq: ['$isActive', true] }, { $eq: ['$blocked', false] }] }, 1, 0]
+          }
+        },
+        totalMessages: { $sum: '$messageCount' },
+        averageMessages: { $avg: '$messageCount' }
+      }
+    }
+  ]);
 };
 
 // Pre-save middleware
 userSchema.pre('save', function(next) {
-  if (this.isModified('lastActivity')) {
-    this.lastActivity = new Date();
+  if (this.isNew) {
+    this.firstSeen = new Date();
   }
+  this.lastSeen = new Date();
   next();
 });
 
-const User = mongoose.model('User', userSchema);
-
-export default User;
+module.exports = mongoose.model('User', userSchema);

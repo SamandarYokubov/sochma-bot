@@ -1,66 +1,97 @@
-import BotController from './controllers/botController.js';
-import { config } from './config/index.js';
-import logger from './utils/logger.js';
+const config = require('./config');
+const Logger = require('./utils/logger');
+const BotService = require('./services/botService');
+const databaseService = require('./services/database');
+const memoryStorage = require('./services/memoryStorage');
 
-// Create bot controller instance
-const botController = new BotController();
+class Application {
+  constructor() {
+    this.botService = new BotService();
+    this.isShuttingDown = false;
+  }
 
-// Main function to start the bot
-async function main() {
-  try {
-    logger.info('🚀 Starting Sochma Bot Application...');
-    
-    // Initialize the bot
-    await botController.initialize();
-    
-    // Start the bot
-    await botController.start();
-    
-    // Log startup information
-    logger.info('✅ Sochma Bot is now running!');
-    logger.info(`📊 Environment: ${config.app.env}`);
-    logger.info(`🤖 Bot Username: @${config.bot.username}`);
-    logger.info(`📡 Mode: ${config.webhook.url ? 'Webhook' : 'Polling'}`);
-    
-  } catch (error) {
-    logger.error('❌ Failed to start Sochma Bot:', error);
-    process.exit(1);
+  /**
+   * Start the application
+   */
+  async start() {
+    try {
+      Logger.info('Starting Telegram Bot Application', {
+        env: config.env,
+        botName: config.bot.name
+      });
+
+      // Connect to MongoDB if enabled
+      if (config.storage.useMongoDB) {
+        await databaseService.connect();
+        await memoryStorage.loadUsersFromMongoDB();
+        Logger.info('MongoDB connection established');
+      }
+
+      // Start the bot
+      await this.botService.start();
+
+      // Set up graceful shutdown
+      this.setupGracefulShutdown();
+
+      Logger.info('Application started successfully');
+    } catch (error) {
+      Logger.error('Failed to start application', { error: error.message });
+      process.exit(1);
+    }
+  }
+
+  /**
+   * Set up graceful shutdown handlers
+   */
+  setupGracefulShutdown() {
+    const shutdown = async (signal) => {
+      if (this.isShuttingDown) {
+        Logger.warn('Shutdown already in progress');
+        return;
+      }
+
+      this.isShuttingDown = true;
+      Logger.info(`Received ${signal}, shutting down gracefully...`);
+
+      try {
+        // Stop the bot
+        await this.botService.stop();
+        
+        // Disconnect from MongoDB
+        if (config.storage.useMongoDB) {
+          await databaseService.disconnect();
+        }
+        
+        Logger.info('Application stopped successfully');
+        process.exit(0);
+      } catch (error) {
+        Logger.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+      }
+    };
+
+    // Handle different termination signals
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGUSR2', () => shutdown('SIGUSR2')); // For nodemon
+
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      Logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
+      process.exit(1);
+    });
+
+    // Handle unhandled promise rejections
+    process.on('unhandledRejection', (reason, promise) => {
+      Logger.error('Unhandled Rejection', { reason: reason?.message || reason, promise });
+      process.exit(1);
+    });
   }
 }
 
-// Handle uncaught exceptions and unhandled rejections
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
-
-// Handle graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received, shutting down gracefully...');
-  try {
-    await botController.stop('SIGTERM');
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during graceful shutdown:', error);
-    process.exit(1);
-  }
-});
-
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received, shutting down gracefully...');
-  try {
-    await botController.stop('SIGINT');
-    process.exit(0);
-  } catch (error) {
-    logger.error('Error during graceful shutdown:', error);
-    process.exit(1);
-  }
-});
-
 // Start the application
-main();
+const app = new Application();
+app.start().catch((error) => {
+  Logger.error('Failed to start application', { error: error.message });
+  process.exit(1);
+});
