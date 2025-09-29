@@ -1,4 +1,4 @@
-export default {
+module.exports = {
   apps: [{
     name: 'sochma-bot',
     script: 'src/index.js',
@@ -25,6 +25,7 @@ export default {
     restart_delay: 4000,
     kill_timeout: 5000,
     listen_timeout: 3000,
-    wait_ready: true
+    wait_ready: true,
+    node_args: '--experimental-modules'
   }]
 };
