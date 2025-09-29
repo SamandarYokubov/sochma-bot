@@ -10,164 +10,159 @@ class RegistrationHandler {
 
   /**
    * Handle registration start
-   * @param {Object} msg - Telegram message object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleRegistrationStart(msg) {
+  async handleRegistrationStart(ctx) {
     try {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
+      const userId = ctx.from.id;
+      const chatId = ctx.chat.id;
 
       Logger.info('Starting registration process', { userId, chatId });
 
-      const result = await this.registrationFSM.startRegistration(userId, msg.from, msg.chat);
+      const result = await this.registrationFSM.startRegistration(userId, ctx.from, ctx.chat);
       
       if (result.success) {
-        await this.bot.sendMessage(chatId, result.message, {
+        await ctx.reply(result.message, {
           parse_mode: 'Markdown',
           ...result.keyboard
         });
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`);
+        await ctx.reply(`❌ ${result.error}`);
       }
     } catch (error) {
       Logger.error('Error handling registration start', { error: error.message });
-      await this.bot.sendMessage(msg.chat.id, '❌ An error occurred. Please try again.');
+      await ctx.reply('❌ An error occurred. Please try again.');
     }
   }
 
   /**
    * Handle phone number input
-   * @param {Object} msg - Telegram message object
+   * @param {Object} ctx - Telegraf context
    */
-  async handlePhoneNumberInput(msg) {
+  async handlePhoneNumberInput(ctx) {
     try {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
-      const phoneNumber = msg.text;
+      const userId = ctx.from.id;
+      const phoneNumber = ctx.message.text;
 
       Logger.info('Processing phone number input', { userId, phoneNumber });
 
       const result = await this.registrationFSM.processPhoneNumber(userId, phoneNumber);
       
       if (result.success) {
-        await this.bot.sendMessage(chatId, result.message, {
+        await ctx.reply(result.message, {
           parse_mode: 'Markdown',
           ...result.keyboard
         });
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`, {
+        await ctx.reply(`❌ ${result.error}`, {
           ...result.keyboard
         });
       }
     } catch (error) {
       Logger.error('Error handling phone number input', { error: error.message });
-      await this.bot.sendMessage(msg.chat.id, '❌ An error occurred. Please try again.');
+      await ctx.reply('❌ An error occurred. Please try again.');
     }
   }
 
   /**
    * Handle full name input
-   * @param {Object} msg - Telegram message object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleFullNameInput(msg) {
+  async handleFullNameInput(ctx) {
     try {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
-      const fullName = msg.text;
+      const userId = ctx.from.id;
+      const fullName = ctx.message.text;
 
       Logger.info('Processing full name input', { userId, fullName });
 
       const result = await this.registrationFSM.processFullName(userId, fullName);
       
       if (result.success) {
-        await this.bot.sendMessage(chatId, result.message, {
+        await ctx.reply(result.message, {
           parse_mode: 'Markdown',
           ...result.keyboard
         });
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`, {
+        await ctx.reply(`❌ ${result.error}`, {
           ...result.keyboard
         });
       }
     } catch (error) {
       Logger.error('Error handling full name input', { error: error.message });
-      await this.bot.sendMessage(msg.chat.id, '❌ An error occurred. Please try again.');
+      await ctx.reply('❌ An error occurred. Please try again.');
     }
   }
 
   /**
    * Handle role selection callback
-   * @param {Object} callbackQuery - Telegram callback query object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleRoleSelection(callbackQuery) {
+  async handleRoleSelection(ctx) {
     try {
-      const chatId = callbackQuery.message.chat.id;
-      const userId = callbackQuery.from.id;
-      const role = callbackQuery.data.replace('role_', '');
+      const userId = ctx.from.id;
+      const role = ctx.callbackQuery.data.replace('role_', '');
 
       Logger.info('Processing role selection', { userId, role });
 
       // Answer the callback query
-      await this.bot.answerCallbackQuery(callbackQuery.id);
+      await ctx.answerCbQuery();
 
       const result = await this.registrationFSM.processRoleSelection(userId, role);
       
       if (result.success) {
-        await this.bot.sendMessage(chatId, result.message, {
+        await ctx.reply(result.message, {
           parse_mode: 'Markdown',
           ...result.keyboard
         });
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`, {
+        await ctx.reply(`❌ ${result.error}`, {
           ...result.keyboard
         });
       }
     } catch (error) {
       Logger.error('Error handling role selection', { error: error.message });
-      await this.bot.answerCallbackQuery(callbackQuery.id, { text: '❌ An error occurred' });
+      await ctx.answerCbQuery('❌ An error occurred');
     }
   }
 
   /**
    * Handle agenda view
-   * @param {Object} msg - Telegram message object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleAgendaView(msg) {
+  async handleAgendaView(ctx) {
     try {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
+      const userId = ctx.from.id;
 
       Logger.info('Showing agenda', { userId });
 
       const result = await this.registrationFSM.showAgenda(userId);
       
       if (result.success) {
-        await this.bot.sendMessage(chatId, result.message, {
+        await ctx.reply(result.message, {
           parse_mode: 'Markdown',
           ...result.keyboard
         });
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`);
+        await ctx.reply(`❌ ${result.error}`);
       }
     } catch (error) {
       Logger.error('Error handling agenda view', { error: error.message });
-      await this.bot.sendMessage(msg.chat.id, '❌ An error occurred. Please try again.');
+      await ctx.reply('❌ An error occurred. Please try again.');
     }
   }
 
   /**
    * Handle registration completion
-   * @param {Object} callbackQuery - Telegram callback query object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleRegistrationCompletion(callbackQuery) {
+  async handleRegistrationCompletion(ctx) {
     try {
-      const chatId = callbackQuery.message.chat.id;
-      const userId = callbackQuery.from.id;
+      const userId = ctx.from.id;
 
       Logger.info('Completing registration', { userId });
 
       // Answer the callback query
-      await this.bot.answerCallbackQuery(callbackQuery.id);
+      await ctx.answerCbQuery();
 
       const result = await this.registrationFSM.completeRegistration(userId);
       
@@ -176,18 +171,18 @@ class RegistrationHandler {
         const user = await User.findByTelegramId(userId);
         const completionMessage = this.getCompletionMessage(user);
         
-        await this.bot.sendMessage(chatId, completionMessage, {
+        await ctx.reply(completionMessage, {
           parse_mode: 'Markdown'
         });
 
         // Send welcome message with main menu
-        await this.sendWelcomeMessage(chatId, user);
+        await this.sendWelcomeMessage(ctx, user);
       } else {
-        await this.bot.sendMessage(chatId, `❌ ${result.error}`);
+        await ctx.reply(`❌ ${result.error}`);
       }
     } catch (error) {
       Logger.error('Error handling registration completion', { error: error.message });
-      await this.bot.answerCallbackQuery(callbackQuery.id, { text: '❌ An error occurred' });
+      await ctx.answerCbQuery('❌ An error occurred');
     }
   }
 
@@ -223,10 +218,10 @@ You can now start using all the bot features. Use /help to see available command
 
   /**
    * Send welcome message with main menu
-   * @param {number} chatId - Chat ID
+   * @param {Object} ctx - Telegraf context
    * @param {Object} user - User object
    */
-  async sendWelcomeMessage(chatId, user) {
+  async sendWelcomeMessage(ctx, user) {
     const welcomeText = `🎉 *Welcome to Sochma, ${user.userFullName}!*
 
 You're all set up and ready to explore the real estate market. Here's what you can do:
@@ -235,7 +230,7 @@ You're all set up and ready to explore the real estate market. Here's what you c
 💰 **Investment Opportunities** - Discover profitable investments
 🤝 **Connect with Others** - Network with buyers and investors
 📊 **Market Insights** - Get the latest market data
-💬 **Direct Messaging** - Chat with property owners
+💬 **Direct Messaging** - Chat with property owners and investors
 
 Use the buttons below or type /help for more options.`;
 
@@ -258,7 +253,7 @@ Use the buttons below or type /help for more options.`;
       }
     };
 
-    await this.bot.sendMessage(chatId, welcomeText, {
+    await ctx.reply(welcomeText, {
       parse_mode: 'Markdown',
       ...keyboard
     });
@@ -300,7 +295,7 @@ Use the buttons below or type /help for more options.`;
         user.registrationState = 'not_started';
         user.isRegistered = false;
         user.phoneNumber = null;
-        user.fullName = null;
+        user.userFullName = null;
         user.role = null;
         await user.save();
         return true;

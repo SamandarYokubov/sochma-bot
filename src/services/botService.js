@@ -1,16 +1,16 @@
-const TelegramBot = require('node-telegram-bot-api');
+const { Telegraf, Scenes, session } = require('telegraf');
 const config = require('../config');
 const Logger = require('../utils/logger');
 const memoryStorage = require('./memoryStorage');
 const RegistrationHandler = require('../handlers/registrationHandler');
 const User = require('../models/User');
-import express from "express";
 
 class BotService {
   constructor() {
     this.bot = null;
     this.isRunning = false;
     this.registrationHandler = null;
+    this.stage = null;
   }
 
   /**
@@ -18,38 +18,40 @@ class BotService {
    */
   async start() {
     try {
-      // Create bot instance
-      this.bot = new TelegramBot(config.bot.token);
-
-      const app = express();
-      app.use(express.json());
-
-      // Bind webhook endpoint
-      app.use(bot.webhookCallback("/webhook"));
-
-      // Set webhook on Telegram side
-      await bot.telegram.setWebhook("https://sochma.uz/webhook");
-
-      // If you also want website routes
-      app.get("/", (req, res) => {
-        res.send("Hello from my website!");
-      });
-
-      // Run express server (listen on internal port)
-      app.listen(3000, () => {
-        console.log("Bot/website server running on port 3000");
-      });
-            
+      // Create bot instance with telegraf
+      this.bot = new Telegraf(config.bot.token);
+      
       // Initialize registration handler
       this.registrationHandler = new RegistrationHandler(this.bot);
+      
+      // Set up middleware
+      this.setupMiddleware();
       
       // Set up event listeners
       this.setupEventListeners();
       
+      // Set up commands
+      this.setupCommands();
+      
+      // Start the bot
+      if (config.env === 'production') {
+        // Use webhook in production
+        await this.bot.launch({
+          webhook: {
+            domain: process.env.WEBHOOK_DOMAIN,
+            port: config.port
+          }
+        });
+      } else {
+        // Use polling in development
+        await this.bot.launch();
+      }
+      
       this.isRunning = true;
-      Logger.info('Bot started successfully', { 
+      Logger.info('Bot started successfully with Telegraf', { 
         username: config.bot.username,
-        name: config.bot.name 
+        name: config.bot.name,
+        mode: config.env === 'production' ? 'webhook' : 'polling'
       });
       
       return this.bot;
@@ -64,10 +66,68 @@ class BotService {
    */
   async stop() {
     if (this.bot && this.isRunning) {
-      await this.bot.stopPolling();
+      await this.bot.stop();
       this.isRunning = false;
       Logger.info('Bot stopped');
     }
+  }
+
+  /**
+   * Set up middleware
+   */
+  setupMiddleware() {
+    // Session middleware for state management
+    this.bot.use(session());
+    
+    // User middleware - store user information
+    this.bot.use(async (ctx, next) => {
+      try {
+        const userId = ctx.from.id;
+        const userData = ctx.from;
+        const chatData = ctx.chat;
+        
+        // Store user information
+        await memoryStorage.setUser(userId, userData, chatData);
+        
+        // Add user to context
+        ctx.user = memoryStorage.getUser(userId);
+        
+        Logger.debug('User middleware processed', { 
+          userId, 
+          username: userData.username,
+          chatId: chatData.id
+        });
+        
+        await next();
+      } catch (error) {
+        Logger.error('Error in user middleware', { error: error.message });
+        await next();
+      }
+    });
+    
+    // Registration middleware - check if user is in registration
+    this.bot.use(async (ctx, next) => {
+      try {
+        const userId = ctx.from.id;
+        const isInRegistration = await this.registrationHandler.isInRegistration(userId);
+        const currentState = await this.registrationHandler.getCurrentState(userId);
+        
+        // Add registration state to context
+        ctx.registrationState = currentState;
+        ctx.isInRegistration = isInRegistration;
+        
+        // If user is in registration and message is text, handle registration
+        if (isInRegistration && ctx.message && ctx.message.text) {
+          await this.handleRegistrationMessage(ctx, currentState);
+          return; // Don't continue to other handlers
+        }
+        
+        await next();
+      } catch (error) {
+        Logger.error('Error in registration middleware', { error: error.message });
+        await next();
+      }
+    });
   }
 
   /**
@@ -75,211 +135,140 @@ class BotService {
    */
   setupEventListeners() {
     // Handle errors
-    this.bot.on('error', (error) => {
-      Logger.error('Bot error', { error: error.message });
+    this.bot.catch((err, ctx) => {
+      Logger.error('Bot error', { 
+        error: err.message,
+        userId: ctx.from?.id,
+        chatId: ctx.chat?.id
+      });
     });
-
-    // Handle polling errors
-    this.bot.on('polling_error', (error) => {
-      Logger.error('Polling error', { error: error.message });
-    });
-
-    // Handle text messages
-    this.bot.on('message', (msg) => {
-      this.handleMessage(msg);
-    });
-
-    // Handle callback queries (inline keyboard buttons)
-    this.bot.on('callback_query', (callbackQuery) => {
-      this.handleCallbackQuery(callbackQuery);
-    });
-
+    
     Logger.info('Event listeners set up');
   }
 
   /**
-   * Handle incoming messages
-   * @param {Object} msg - Telegram message object
+   * Set up commands
    */
-  async handleMessage(msg) {
-    try {
-      const chatId = msg.chat.id;
-      const userId = msg.from.id;
-      const text = msg.text;
+  setupCommands() {
+    // Start command
+    this.bot.start(async (ctx) => {
+      await this.sendStartMessage(ctx);
+    });
 
-      // Store user information
-      await memoryStorage.setUser(userId, msg.from, msg.chat);
+    // Register command
+    this.bot.command('register', async (ctx) => {
+      await this.registrationHandler.handleRegistrationStart(ctx);
+    });
 
-      Logger.debug('Message received', { 
-        chatId, 
-        userId, 
-        username: msg.from.username,
-        text: text?.substring(0, 100) // Log first 100 chars
-      });
+    // Hello command
+    this.bot.hears(['/hello', 'hello', 'hi'], async (ctx) => {
+      await this.sendHelloMessage(ctx);
+    });
 
-      // Check if user is in registration process
-      const isInRegistration = await this.registrationHandler.isInRegistration(userId);
-      const currentState = await this.registrationHandler.getCurrentState(userId);
+    // Help command
+    this.bot.help(async (ctx) => {
+      await this.sendHelpMessage(ctx);
+    });
 
-      // Handle registration flow if user is in registration
-      if (isInRegistration && text) {
-        await this.handleRegistrationMessage(msg, currentState);
-        return;
-      }
+    // Stats command
+    this.bot.command('stats', async (ctx) => {
+      await this.sendStatsMessage(ctx);
+    });
 
-      // Handle different message types
-      if (text) {
-        await this.handleTextMessage(msg);
-      } else if (msg.photo) {
-        await this.handlePhotoMessage(msg);
-      } else if (msg.sticker) {
-        await this.handleStickerMessage(msg);
-      } else {
-        await this.handleOtherMessage(msg);
-      }
+    // Info command
+    this.bot.command('info', async (ctx) => {
+      await this.sendUserInfo(ctx);
+    });
 
-    } catch (error) {
-      Logger.error('Error handling message', { 
-        error: error.message,
-        chatId: msg.chat.id,
-        userId: msg.from.id
-      });
-    }
+    // Handle callback queries
+    this.bot.on('callback_query', async (ctx) => {
+      await this.handleCallbackQuery(ctx);
+    });
+
+    // Handle text messages
+    this.bot.on('text', async (ctx) => {
+      await this.sendDefaultMessage(ctx);
+    });
+
+    // Handle photos
+    this.bot.on('photo', async (ctx) => {
+      await this.handlePhotoMessage(ctx);
+    });
+
+    // Handle stickers
+    this.bot.on('sticker', async (ctx) => {
+      await this.handleStickerMessage(ctx);
+    });
+
+    Logger.info('Commands set up');
   }
 
   /**
    * Handle registration messages
-   * @param {Object} msg - Telegram message object
+   * @param {Object} ctx - Telegraf context
    * @param {string} currentState - Current registration state
    */
-  async handleRegistrationMessage(msg, currentState) {
-    const text = msg.text.trim();
+  async handleRegistrationMessage(ctx, currentState) {
+    const text = ctx.message.text.trim();
 
     switch (currentState) {
       case 'not_started':
         // User is starting registration, ask for phone number
-        await this.registrationHandler.handlePhoneNumberInput(msg);
+        await this.registrationHandler.handlePhoneNumberInput(ctx);
         break;
       case 'phone_entered':
         // User entered phone, now ask for name
-        await this.registrationHandler.handleFullNameInput(msg);
+        await this.registrationHandler.handleFullNameInput(ctx);
         break;
       case 'name_entered':
         // This should be handled by role selection buttons, but fallback to text
-        await this.bot.sendMessage(msg.chat.id, 'Please use the buttons below to select your role.');
+        await ctx.reply('Please use the buttons below to select your role.');
         break;
       default:
-        await this.bot.sendMessage(msg.chat.id, 'Please complete the registration process first.');
+        await ctx.reply('Please complete the registration process first.');
     }
-  }
-
-  /**
-   * Handle text messages
-   * @param {Object} msg - Telegram message object
-   */
-  async handleTextMessage(msg) {
-    const chatId = msg.chat.id;
-    const text = msg.text.toLowerCase().trim();
-    const user = memoryStorage.getUser(msg.from.id);
-
-    // Handle different commands
-    switch (text) {
-      case '/start':
-        await this.sendStartMessage(chatId, user);
-        break;
-      case '/register':
-        await this.registrationHandler.handleRegistrationStart(msg);
-        break;
-      case '/hello':
-      case 'hello':
-      case 'hi':
-        await this.sendHelloMessage(chatId, user);
-        break;
-      case '/help':
-        await this.sendHelpMessage(chatId);
-        break;
-      case '/stats':
-        await this.sendStatsMessage(chatId);
-        break;
-      case '/info':
-        await this.sendUserInfo(chatId, user);
-        break;
-      default:
-        await this.sendDefaultMessage(chatId, user);
-    }
-  }
-
-  /**
-   * Handle photo messages
-   * @param {Object} msg - Telegram message object
-   */
-  async handlePhotoMessage(msg) {
-    const chatId = msg.chat.id;
-    await this.bot.sendMessage(chatId, '📸 Nice photo! Thanks for sharing!');
-  }
-
-  /**
-   * Handle sticker messages
-   * @param {Object} msg - Telegram message object
-   */
-  async handleStickerMessage(msg) {
-    const chatId = msg.chat.id;
-    await this.bot.sendMessage(chatId, '😄 Cool sticker!');
-  }
-
-  /**
-   * Handle other message types
-   * @param {Object} msg - Telegram message object
-   */
-  async handleOtherMessage(msg) {
-    const chatId = msg.chat.id;
-    await this.bot.sendMessage(chatId, 'I received your message! Thanks! 😊');
   }
 
   /**
    * Handle callback queries
-   * @param {Object} callbackQuery - Telegram callback query object
+   * @param {Object} ctx - Telegraf context
    */
-  async handleCallbackQuery(callbackQuery) {
-    const chatId = callbackQuery.message.chat.id;
-    const data = callbackQuery.data;
-
-    // Answer the callback query
-    await this.bot.answerCallbackQuery(callbackQuery.id);
+  async handleCallbackQuery(ctx) {
+    const data = ctx.callbackQuery.data;
 
     // Handle registration callbacks
     if (data.startsWith('role_')) {
-      await this.registrationHandler.handleRoleSelection(callbackQuery);
+      await this.registrationHandler.handleRoleSelection(ctx);
       return;
     }
 
     if (data === 'complete_registration') {
-      await this.registrationHandler.handleRegistrationCompletion(callbackQuery);
+      await this.registrationHandler.handleRegistrationCompletion(ctx);
       return;
     }
 
     // Handle different callback data
     switch (data) {
       case 'get_info':
-        const user = memoryStorage.getUser(callbackQuery.from.id);
-        await this.sendUserInfo(chatId, user);
+        await this.sendUserInfo(ctx);
         break;
       case 'get_stats':
-        await this.sendStatsMessage(chatId);
+        await this.sendStatsMessage(ctx);
         break;
       case 'start_registration':
-        await this.registrationHandler.handleRegistrationStart(callbackQuery.message);
+        await this.registrationHandler.handleRegistrationStart(ctx);
         break;
       default:
-        await this.bot.sendMessage(chatId, 'Button clicked!');
+        await ctx.reply('Button clicked!');
     }
   }
 
   /**
    * Send start message
+   * @param {Object} ctx - Telegraf context
    */
-  async sendStartMessage(chatId, user) {
-    // Check if user is registered
+  async sendStartMessage(ctx) {
+    const user = ctx.user;
     const isRegistered = user && user.isRegistered;
     
     if (isRegistered) {
@@ -315,7 +304,7 @@ Use the buttons below or type /help for more options!`;
         }
       };
 
-      await this.bot.sendMessage(chatId, welcomeText, keyboard);
+      await ctx.reply(welcomeText, keyboard);
     } else {
       const welcomeText = `👋 Hello ${user?.firstName || 'there'}! 
 
@@ -344,29 +333,32 @@ Ready to get started?`;
         }
       };
 
-      await this.bot.sendMessage(chatId, welcomeText, keyboard);
+      await ctx.reply(welcomeText, keyboard);
     }
   }
 
   /**
    * Send hello message
+   * @param {Object} ctx - Telegraf context
    */
-  async sendHelloMessage(chatId, user) {
+  async sendHelloMessage(ctx) {
+    const user = ctx.user;
     const greetings = [
-      `Hello ${user.firstName || 'there'}! 👋`,
-      `Hi ${user.firstName || 'friend'}! How are you? 😊`,
-      `Hey ${user.firstName || 'buddy'}! Nice to see you! 🎉`,
-      `Greetings ${user.firstName || 'stranger'}! Welcome! 🌟`
+      `Hello ${user?.firstName || 'there'}! 👋`,
+      `Hi ${user?.firstName || 'friend'}! How are you? 😊`,
+      `Hey ${user?.firstName || 'buddy'}! Nice to see you! 🎉`,
+      `Greetings ${user?.firstName || 'stranger'}! Welcome! 🌟`
     ];
     
     const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
-    await this.bot.sendMessage(chatId, randomGreeting);
+    await ctx.reply(randomGreeting);
   }
 
   /**
    * Send help message
+   * @param {Object} ctx - Telegraf context
    */
-  async sendHelpMessage(chatId) {
+  async sendHelpMessage(ctx) {
     const helpText = `🤖 *${config.bot.name} Help*
 
 *Available Commands:*
@@ -393,13 +385,14 @@ Ready to get started?`;
 
 Just send me any message and I'll respond! 😊`;
 
-    await this.bot.sendMessage(chatId, helpText, { parse_mode: 'Markdown' });
+    await ctx.reply(helpText, { parse_mode: 'Markdown' });
   }
 
   /**
    * Send stats message
+   * @param {Object} ctx - Telegraf context
    */
-  async sendStatsMessage(chatId) {
+  async sendStatsMessage(ctx) {
     const stats = memoryStorage.getStats();
     const mongoStats = await memoryStorage.getMongoStats();
     
@@ -419,13 +412,20 @@ Just send me any message and I'll respond! 😊`;
 📈 Avg Messages/User: ${Math.round(mongoStats.users.averageMessages || 0)}`;
     }
 
-    await this.bot.sendMessage(chatId, statsText, { parse_mode: 'Markdown' });
+    await ctx.reply(statsText, { parse_mode: 'Markdown' });
   }
 
   /**
    * Send user info
+   * @param {Object} ctx - Telegraf context
    */
-  async sendUserInfo(chatId, user) {
+  async sendUserInfo(ctx) {
+    const user = ctx.user;
+    if (!user) {
+      await ctx.reply('❌ User information not found.');
+      return;
+    }
+
     const userText = `ℹ️ *Your Information*
 
 🆔 ID: \`${user.id}\`
@@ -437,22 +437,49 @@ Just send me any message and I'll respond! 😊`;
 👀 Last Seen: ${user.lastSeen.toLocaleString()}
 💬 Messages: ${user.messageCount}`;
 
-    await this.bot.sendMessage(chatId, userText, { parse_mode: 'Markdown' });
+    if (user.isRegistered) {
+      userText += `\n\n📱 Phone: ${user.phoneNumber || 'Not provided'}
+👤 Full Name: ${user.userFullName || 'Not provided'}
+🎯 Role: ${user.role || 'Not selected'}
+✅ Registration: Completed`;
+    } else {
+      userText += `\n\n⚠️ Registration: Not completed`;
+    }
+
+    await ctx.reply(userText, { parse_mode: 'Markdown' });
+  }
+
+  /**
+   * Handle photo messages
+   * @param {Object} ctx - Telegraf context
+   */
+  async handlePhotoMessage(ctx) {
+    await ctx.reply('📸 Nice photo! Thanks for sharing!');
+  }
+
+  /**
+   * Handle sticker messages
+   * @param {Object} ctx - Telegraf context
+   */
+  async handleStickerMessage(ctx) {
+    await ctx.reply('😄 Cool sticker!');
   }
 
   /**
    * Send default message
+   * @param {Object} ctx - Telegraf context
    */
-  async sendDefaultMessage(chatId, user) {
+  async sendDefaultMessage(ctx) {
+    const user = ctx.user;
     const responses = [
-      `Thanks for your message, ${user.firstName || 'friend'}! 😊`,
-      `I heard you, ${user.firstName || 'buddy'}! What else can I help with? 🤔`,
-      `Got it, ${user.firstName || 'there'}! Try /help for more options! 💡`,
-      `Message received, ${user.firstName || 'friend'}! Thanks! 🙏`
+      `Thanks for your message, ${user?.firstName || 'friend'}! 😊`,
+      `I heard you, ${user?.firstName || 'buddy'}! What else can I help with? 🤔`,
+      `Got it, ${user?.firstName || 'there'}! Try /help for more options! 💡`,
+      `Message received, ${user?.firstName || 'friend'}! Thanks! 🙏`
     ];
     
     const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-    await this.bot.sendMessage(chatId, randomResponse);
+    await ctx.reply(randomResponse);
   }
 }
 

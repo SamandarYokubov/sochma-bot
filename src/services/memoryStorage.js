@@ -33,7 +33,7 @@ class MemoryStorage {
    * Store or update user information
    * @param {number} userId - Telegram user ID
    * @param {Object} userData - User data to store
-   * @param {Object} chatData- Telegram chat Data
+   * @param {Object} chatData - Telegram chat Data
    */
   async setUser(userId, userData, chatData) {
     try {

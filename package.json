@@ -17,14 +17,14 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
     "dotenv": "^16.3.1",
+    "mongodb": "^6.3.0",
     "mongoose": "^8.0.3",
-    "mongodb": "^6.3.0"
+    "telegraf": "^4.15.6"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=16.0.0"
