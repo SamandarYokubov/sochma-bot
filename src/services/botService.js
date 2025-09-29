@@ -4,6 +4,7 @@ const Logger = require('../utils/logger');
 const memoryStorage = require('./memoryStorage');
 const RegistrationHandler = require('../handlers/registrationHandler');
 const User = require('../models/User');
+import express from "express";
 
 class BotService {
   constructor() {
@@ -18,8 +19,27 @@ class BotService {
   async start() {
     try {
       // Create bot instance
-      this.bot = new TelegramBot(config.bot.token, { polling: true });
-      
+      this.bot = new TelegramBot(config.bot.token);
+
+      const app = express();
+      app.use(express.json());
+
+      // Bind webhook endpoint
+      app.use(bot.webhookCallback("/webhook"));
+
+      // Set webhook on Telegram side
+      await bot.telegram.setWebhook("https://sochma.uz/webhook");
+
+      // If you also want website routes
+      app.get("/", (req, res) => {
+        res.send("Hello from my website!");
+      });
+
+      // Run express server (listen on internal port)
+      app.listen(3000, () => {
+        console.log("Bot/website server running on port 3000");
+      });
+            
       // Initialize registration handler
       this.registrationHandler = new RegistrationHandler(this.bot);
       
